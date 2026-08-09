@@ -4,11 +4,104 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pillow>=12.3.0",
+    "torch>=2.13.0",
+    "torchvision>=0.28.0",
+]
 
 [dependency-groups]
 dev = [
     "ipykernel>=7.3.0",
     "matplotlib>=3.11.1",
-    "pillow>=12.3.0",
 ]
+
+[tool.ruff]
+exclude = [
+   "__pycache__",
+   "develop-eggs",
+   "eggs",
+   ".eggs",
+   "wheels",
+   "htmlcov",
+   ".tox",
+   ".nox",
+   ".coverage",
+   ".cache",
+   ".pytest_cache",
+   ".ipynb_checkpoints",
+   ".mypy_cache",
+   ".pybuilder",
+   "__pypackages__",
+   ".env",
+   ".venv",
+   "venv",
+   "env",
+   "ENV",
+   "env.bak",
+   "venv.bak",
+   ".archive",
+   ".persist_cache",
+   "site-packages",
+   "node_modules",
+   "dist",
+   "build",
+   "dist-info",
+   "egg-info",
+   ".hatchling",
+   ".bzr",
+   ".direnv",
+   ".git",
+   ".git-rewrite",
+   ".hg",
+   ".pants.d",
+   ".pytype",
+   ".ruff_cache",
+   ".svn",
+   ".vscode",
+   "_build",
+   "buck-out",
+   "migrations",
+   "target",
+   "bin",
+   "lib",
+   "lib64",
+   "include",
+   "share",
+   "var",
+   "tmp",
+   "temp",
+   "logs",
+]
+line-length = 120
+indent-width = 4
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+fixable = ["ALL"]
+unfixable = []
+ignore = ["E741"]
+
+[tool.ruff.lint.isort]
+length-sort = true
+section-order = [
+   "future",
+   "standard-library",
+   "first-party",
+   "third-party",
+   "local-folder",
+]
+lines-between-types = 1
+order-by-type = false
+combine-as-imports = true
+known-first-party = ['_parent']
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
