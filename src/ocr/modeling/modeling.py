@@ -6,56 +6,75 @@ The original paper uses a classification MLP head to classify the image embedded
 Here we are going to use an encoder backbone and a decoder text generator.
 """
 
+from dataclasses import asdict
+
 import torch
 
 from torch import nn
 from torchvision.ops import MLP
 from torch.nn.functional import scaled_dot_product_attention
 
+from config import MHAConfig, MLPConfig, NormConfig
+
 
 class ViTransformer(nn.Module):
     def __init__(self, num_layers: int, embed_dim: int, num_heads: int):
         super().__init__()
-
+        pass
 
     def forward(x: torch.Tensor):
         pass
+
 
 class Encoder(nn.Module):
     def __init__(
         self,
         num_blocks: int,
-        embed_dim: int,
-        num_heads: int,
+        attn_cfg: MHAConfig,
+        mlp_cfg: MLPConfig,
         base_dims: tuple[int, int, int],
-        p_dims: tuple[int, int],
+        p_dims: tuple[int, int], 
+        *,
+        norm_cfg: NormConfig | None = None,
     ):
         """
+        Encoder block. If attention layers are given, 
+
         Args:
             num_blocks (int): Number of attention blocks.
-            embed_dim (int): Output embedding dimension (D).
-            num_heads (int): Number of attention heads in each attention block.
-            base_dims (tuple[int, int, int]): The base image (H, W, C) to interpolate into.
-            p_dims (tuple[int, int]): Dimensions of each patch. i.e. 14*14 for a 196*196 image.
+
+            attn_cfg (MHAConfig): Self attention head config.
+
+            mlp (MLPConfig): Feed-forward neural network config.
+           
+            base_dims (tuple[int, int, int]): The base image dimensions (H, W, C) to interpolate into.
+
+            p_dims (tuple[int, int]): Dimensions of each patch. i.e. 14x14 for a 196x196 image.
+
+            norm_cfg (NormConfig | None): Norm layer config.
         """
         super().__init__()
         self.base_dims = base_dims
         self.p_dims = p_dims
+        self.embed_dim = attn_cfg.embed_dim
+
         H, W, C = base_dims
         pH, pW = p_dims
-        assert H // pH == W // pW # ensure patch dimensions fit within the base dimensions given
+        # ensure patch dimensions fit within the base dimensions given
+        assert H // pH == W // pW 
 
         N = H * W // (p_dims[0] * p_dims[1])
         self.flattened_dims = (N, p_dims[0] * p_dims[1] * C)
 
         layers = []
-        layers.append(nn.Linear(self.flattened_dims[1], embed_dim))    # Projecting to embedding dimension D from 
+        # Project to embedding dimension first
+        layers.append(nn.Linear(self.flattened_dims[1], self.embed_dim)) 
         for _ in range(num_blocks):
-            layers.append(MHALayer(embed_dim, num_heads))
-            layers.append(MLP(embed_dim, [embed_dim * 2, embed_dim]))
+            layers.append(**norm_cfg.as_dict())
+            layers.append(**attn_cfg.as_dict())
+            layers.append(self.embed_dim, **mlp_cfg.as_dict())
         self.stack = nn.Sequential(layers)
         
-
     def forward(self, x: torch.Tensor):
         """
         Forward pass is initially going to be implemented with absolute positional embeddings and linear interpolation. 
@@ -66,12 +85,12 @@ class Encoder(nn.Module):
             x (torch.Tensor): The input image of size (B, H, W, C).
         """
         assert len(x.shape) == 4
-        B, H, W, C = x.shape
+        B = x.shape[0]
         flattened = torch.reshape(x, (B, *self.flattened_dims))
         return self.stack(flattened)
 
 
-class MHALayer(nn.Module):
+class MHALayer(nn.MultiheadAttention):
     def __init__(
         self, embed_dim: int, num_heads: int, dropout: bool = False, vdim: int | None = None, kdim: int | None = None
     ):
@@ -80,10 +99,13 @@ class MHALayer(nn.Module):
 
         Args:
             embed_dim (int): Dimension of input embeddings.
-            num_heads (int): Number of attention heads.
-            qk_dim (int): Dimension of the query-key vectors.
-            dropout (bool): Whether to include dropout, which randomly zeroes some neurons (regularisation).
+
+            num_heads (int | None): Number of attention heads.
+
+            dropout (bool): Whether to include dropout.
+
             vdim (int | None): Dimension of the value embeddings.
+
             kdim (int | None): Dimension of the key embeddings.
         """
         super().__init__()
@@ -132,5 +154,3 @@ class MHALayer(nn.Module):
 
         # Apply residual connection and return
         return x + attn
-
-def 
