@@ -6,15 +6,13 @@ The original paper uses a classification MLP head to classify the image embedded
 Here we are going to use an encoder backbone and a decoder text generator.
 """
 
-from dataclasses import asdict
-
 import torch
 
 from torch import nn
 from torchvision.ops import MLP
 from torch.nn.functional import scaled_dot_product_attention
 
-from config import MHAConfig, MLPConfig, NormConfig
+from .config import MHAConfig, MLPConfig, NormConfig
 
 
 class ViTransformer(nn.Module):
@@ -32,10 +30,9 @@ class Encoder(nn.Module):
         num_blocks: int,
         attn_cfg: MHAConfig,
         mlp_cfg: MLPConfig,
+        norm_cfg: NormConfig,
         base_dims: tuple[int, int, int],
         p_dims: tuple[int, int], 
-        *,
-        norm_cfg: NormConfig | None = None,
     ):
         """
         Encoder block. If attention layers are given, 
@@ -70,10 +67,10 @@ class Encoder(nn.Module):
         # Project to embedding dimension first
         layers.append(nn.Linear(self.flattened_dims[1], self.embed_dim)) 
         for _ in range(num_blocks):
-            layers.append(**norm_cfg.as_dict())
-            layers.append(**attn_cfg.as_dict())
-            layers.append(self.embed_dim, **mlp_cfg.as_dict())
-        self.stack = nn.Sequential(layers)
+            layers.append(nn.LayerNorm(**norm_cfg.as_dict()))
+            layers.append(MHALayer(**attn_cfg.as_dict()))
+            layers.append(MLP(self.embed_dim, **mlp_cfg.as_dict()))
+        self.stack = nn.Sequential(*layers)
         
     def forward(self, x: torch.Tensor):
         """
@@ -90,7 +87,7 @@ class Encoder(nn.Module):
         return self.stack(flattened)
 
 
-class MHALayer(nn.MultiheadAttention):
+class MHALayer(nn.Module):
     def __init__(
         self, embed_dim: int, num_heads: int, dropout: bool = False, vdim: int | None = None, kdim: int | None = None
     ):

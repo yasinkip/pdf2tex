@@ -1,9 +1,16 @@
-from typing import Any
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+
+import torch
+
+
+class BaseConfig:
+
+    def as_dict(self):
+        return asdict(self)
 
 
 @dataclass
-class MHAConfig:
+class MHAConfig(BaseConfig):
     """Config for MultiheadAttention blocks."""
     embed_dim: int
     num_heads: int
@@ -11,9 +18,12 @@ class MHAConfig:
     vdim: int | None = None
     kdim: int | None = None
 
+    def as_dict(self):
+        return asdict(self)
+
 
 @dataclass
-class MLPConfig:
+class MLPConfig(BaseConfig):
     """Config for FFN layers."""
     hidden_channels: list[int]
     activation_layer: None = None
@@ -22,5 +32,6 @@ class MLPConfig:
 
 
 @dataclass
-class NormConfig:
+class NormConfig(BaseConfig):
     """Config for LayerNorm."""
+    normalized_shape: int | list | torch.Size

@@ -1,10 +1,10 @@
-from modeling import Encoder, MHALayer
-from config import NormConfig, MHAConfig, MLPConfig
+from .config import MHAConfig, MLPConfig, NormConfig
+from .modeling import Encoder, MHALayer
 
 __all__ = [
-    Encoder,
-    MHALayer,
-    NormConfig,
-    MHAConfig,
-    MLPConfig
+    "Encoder",
+    "MHALayer",
+    "NormConfig",
+    "MHAConfig",
+    "MLPConfig",
 ]
