@@ -6,6 +6,10 @@ The original paper uses a classification MLP head to classify the image embedded
 Here we are going to use an encoder backbone and a decoder text generator.
 """
 
+import math
+
+from typing import Literal
+
 import torch
 
 from torch import nn
@@ -58,33 +62,48 @@ class Encoder(nn.Module):
         H, W, C = base_dims
         pH, pW = p_dims
         # ensure patch dimensions fit within the base dimensions given
-        assert H // pH == W // pW 
+        assert H // pH == W // pW, f"Patches don't fit exactly in base dimensions: {H} // {pH} =/= {W} // {pW}"
+        assert H % pH == 0 and W % pW == 0, f"Patch dimensions aren't divisible by base dimensions: one of ({H}, {pH}) and ({W}, {pW}) do not divide."
 
         N = H * W // (p_dims[0] * p_dims[1])
         self.flattened_dims = (N, p_dims[0] * p_dims[1] * C)
 
         layers = []
-        # Project to embedding dimension first
-        layers.append(nn.Linear(self.flattened_dims[1], self.embed_dim)) 
         for _ in range(num_blocks):
             layers.append(nn.LayerNorm(**norm_cfg.as_dict()))
             layers.append(MHALayer(**attn_cfg.as_dict()))
             layers.append(MLP(self.embed_dim, **mlp_cfg.as_dict()))
         self.stack = nn.Sequential(*layers)
+
+        # Initial projector to embedding dimension
+        self.embedder = nn.Linear(self.flattened_dims[1], self.embed_dim)
+        self.cls = nn.Parameter((N+1)*torch.rand(size=(self.embed_dim,), requires_grad=True))
+        self.positional = nn.Parameter((N+1)*torch.rand(size=(N+1, self.embed_dim), requires_grad=True))
         
     def forward(self, x: torch.Tensor):
         """
-        Forward pass is initially going to be implemented with absolute positional embeddings and linear interpolation. 
+        Forward pass is initially going to be implemented with absolute positional embeddings and linear interpolation. We assume at this stage that `x` has been resized to `base_dims` dimensions.
 
         TODO: We currently "perform 2D interpolation of the pre-trained position embeddings, according to their location in the original image" but we can replace this w/ something like RoPE.
 
         Args: 
             x (torch.Tensor): The input image of size (B, H, W, C).
         """
-        assert len(x.shape) == 4
-        B = x.shape[0]
-        flattened = torch.reshape(x, (B, *self.flattened_dims))
-        return self.stack(flattened)
+        assert len(x.shape) == 4, f"Input tensor needs to be of dimension 4, instead its of dimension {len(x.shape)}."
+        assert x.shape[1:] == self.base_dims, f"Please resize x (which has dimensions {x.shape[1:]}) to {self.base_dims})"
+
+        batch_size = x.shape[0]
+        x = torch.reshape(x, (batch_size, *self.flattened_dims))
+
+        # Run through embedder
+        z = self.embedder(x)
+
+        # add [CLS] token and positional embedding
+        cls = self.cls.data
+        cls = cls.expand((batch_size, 1, self.embed_dim))
+        z = torch.cat((cls, z), dim=1)
+        z += self.positional
+        return self.stack(z)
 
 
 class MHALayer(nn.Module):
@@ -112,11 +131,8 @@ class MHALayer(nn.Module):
         self.num_heads = num_heads
         self.dropout = dropout
 
-        if kdim is None:
-            self.kdim = embed_dim
-
-        if vdim is None:
-            self.vdim = embed_dim
+        self.kdim = kdim if kdim is not None else embed_dim
+        self.vdim = vdim if vdim is not None else embed_dim
 
         self.head_dim = embed_dim // num_heads
 

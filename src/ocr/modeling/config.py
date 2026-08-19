@@ -1,15 +1,18 @@
-from dataclasses import asdict, dataclass
+from typing import Callable
 
 import torch
+import torch.nn.functional as F
+
+from msgspec import Struct
+from msgspec.structs import asdict
 
 
-class BaseConfig:
+class BaseConfig(Struct):
 
     def as_dict(self):
         return asdict(self)
 
 
-@dataclass
 class MHAConfig(BaseConfig):
     """Config for MultiheadAttention blocks."""
     embed_dim: int
@@ -18,20 +21,15 @@ class MHAConfig(BaseConfig):
     vdim: int | None = None
     kdim: int | None = None
 
-    def as_dict(self):
-        return asdict(self)
 
-
-@dataclass
 class MLPConfig(BaseConfig):
     """Config for FFN layers."""
     hidden_channels: list[int]
-    activation_layer: None = None
+    activation_layer: Callable[[torch.Tensor, str], torch.Tensor] = F.gelu
     bias: bool = True
     dropout: float = 0
 
 
-@dataclass
 class NormConfig(BaseConfig):
     """Config for LayerNorm."""
     normalized_shape: int | list | torch.Size
