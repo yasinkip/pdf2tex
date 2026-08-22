@@ -16,50 +16,70 @@ from torch import nn
 from torchvision.ops import MLP
 from torch.nn.functional import scaled_dot_product_attention
 
-from .config import MHAConfig, MLPConfig, ViTConfig, NormConfig
+from .config import OCRConfig, TransformerStackConfig
 
 
-class ViTransformer(nn.Module):
-    def __init__(self, cfg: ViTConfig):
+class OCR(nn.Module):
+    def __init__(self, cfg: OCRConfig):
         super().__init__()
+        encoder = VisionEncoder(cfg.encoder_cfg)
 
         pass
-
 
     def forward(x: torch.Tensor):
         pass
 
 
-class Encoder(nn.Module):
+class TextDecoder(nn.Module):
+    def __init__(
+        self, 
+        stack_cfg: TransformerStackConfig,
+    ):
+        """
+        Decoder Stack. Currently implemented exactly as in the original "Attention is All You Need" paper, with more explicit parameterization compared to `nn.TransformerDecoder`, allowing for more customisability.
+
+        Args:
+            num_blocks (int): Number of transformer blocks.
+
+            block_cfg (TransformerBlockConfig): Block config.
+        """
+        assert stack_cfg.block.attn.causal, "Must use causal attention for decoder stack."
+
+        self.stack = nn.Sequential(*build_blocks(stack_cfg))
+        pass
+
+    def forward(x: torch.Tensor):
+        pass
+
+
+
+class VisionEncoder(nn.Module):
     def __init__(
         self,
-        num_blocks: int,
-        attn_cfg: MHAConfig,
-        mlp_cfg: MLPConfig,
-        norm_cfg: NormConfig,
+        stack_cfg: TransformerStackConfig,
         base_dims: tuple[int, int, int],
         p_dims: tuple[int, int],
     ):
         """
-        Encoder block. If attention layers are given,
+        Encoder stack. Currently implemented exactly as in the original Vision Transformers paper. 
 
         Args:
-            num_blocks (int): Number of attention blocks.
+            num_blocks (int): Number of transformer blocks.
 
-            attn_cfg (MHAConfig): Self attention head config.
-
-            mlp (MLPConfig): Feed-forward neural network config.
+            block_cfg (TransformerBlock): Config for neural net layers.
 
             base_dims (tuple[int, int, int]): The base image dimensions (H, W, C) to interpolate into.
 
             p_dims (tuple[int, int]): Dimensions of each patch. i.e. 14x14 for a 196x196 image.
-
-            norm_cfg (NormConfig | None): Norm layer config.
         """
         super().__init__()
         self.base_dims = base_dims
         self.p_dims = p_dims
-        self.embed_dim = attn_cfg.embed_dim
+
+        block_cfg = stack_cfg.block
+        self.embed_dim = block_cfg.attn.embed_dim
+
+        assert not block_cfg.attn.causal, "Cannot use causal attention for encoder stack."
 
         H, W, C = base_dims
         pH, pW = p_dims
@@ -72,12 +92,7 @@ class Encoder(nn.Module):
         N = H * W // (p_dims[0] * p_dims[1])
         self.flattened_dims = (N, p_dims[0] * p_dims[1] * C)
 
-        layers = []
-        for _ in range(num_blocks):
-            layers.append(nn.LayerNorm(**norm_cfg.as_dict()))
-            layers.append(MHALayer(**attn_cfg.as_dict()))
-            layers.append(MLP(self.embed_dim, **mlp_cfg.as_dict()))
-        self.stack = nn.Sequential(*layers)
+        self.stack = nn.Sequential(*build_blocks(stack_cfg))
 
         # Initial projector to embedding dimension
         self.embedder = nn.Linear(self.flattened_dims[1], self.embed_dim)
@@ -116,10 +131,10 @@ class Encoder(nn.Module):
 
 class MHALayer(nn.Module):
     def __init__(
-        self, embed_dim: int, num_heads: int, dropout: bool = False, vdim: int | None = None, kdim: int | None = None
+        self, embed_dim: int, num_heads: int, dropout: bool = False, vdim: int | None = None, kdim: int | None = None, causal: bool = False
     ):
         """
-        Implementation of a standard multi head attention layer.
+        Implementation of a standard multi head attention layer using `scaled_dot_product_attention`.
 
         Args:
             embed_dim (int): Dimension of input embeddings.
@@ -131,6 +146,8 @@ class MHALayer(nn.Module):
             vdim (int | None): Dimension of the value embeddings.
 
             kdim (int | None): Dimension of the key embeddings.
+
+            causal (bool): Whether or not to use causal attention.
         """
         super().__init__()
         assert not embed_dim % num_heads, "The embedding dimension must be divisible by the number of heads."
@@ -150,7 +167,7 @@ class MHALayer(nn.Module):
 
         self.out_proj = nn.Linear(self.embed_dim, self.embed_dim)
 
-    def forward(self, x: torch.Tensor, causal: bool = False):
+    def forward(self, x: torch.Tensor):
         """
         Args:
             x (torch.Tensor): Input tensor fo size (batch_size, num_tokens, emb_dim) == (B, N, D).
@@ -169,9 +186,18 @@ class MHALayer(nn.Module):
         value = torch.reshape(query, (B, N, self.num_heads, self.head_dim))
 
         # Compute attention, concatenate across heads, then output projection
-        attn = scaled_dot_product_attention(query, key, value, is_causal=causal)
+        attn = scaled_dot_product_attention(query, key, value, is_causal=self.causal)
         attn = torch.reshape(attn, (B, N, D))
         attn = self.out_proj(attn)
 
         # Apply residual connection and return
         return x + attn
+
+
+def build_blocks(block_cfg: TransformerStackConfig) -> list[nn.Module]:
+    layers = []
+    for _ in range(block_cfg.num_blocks):
+        layers.append(nn.LayerNorm(**block_cfg.norm.as_dict()))
+        layers.append(MHALayer(**block_cfg.attn.as_dict()))
+        layers.append(MLP(block_cfg.embed_dim, **block_cfg.mlp.as_dict()))
+    return layers

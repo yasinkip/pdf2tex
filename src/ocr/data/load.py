@@ -6,9 +6,10 @@ from os import PathLike
 from typing import Any
 
 from torchvision.io import decode_image
+from torch.utils.data import Dataset
 
 
-class Im2Latex230kDataset:
+class Im2Latex230kDataset(Dataset):
     def __init__(
         self,
         root_path: PathLike,

@@ -20,6 +20,7 @@ class MHAConfig(BaseConfig):
     dropout: bool = False
     vdim: int | None = None
     kdim: int | None = None
+    causal: bool = False
 
 
 class MLPConfig(BaseConfig):
@@ -40,10 +41,19 @@ class TransformerBlockConfig(BaseConfig):
     mlp: MLPConfig
     norm: NormConfig
 
+    @property
+    def embed_dim(self):
+        return self.attn.embed_dim
 
-class ViTConfig(BaseConfig):
-    encoder_cfg: TransformerBlockConfig
-    decoder_cfg: TransformerBlockConfig
+
+class TransformerStackConfig(BaseConfig):
+    num_blocks: int
+    block: TransformerBlockConfig
+
+
+class OCRConfig(BaseConfig):
+    encoder_cfg: TransformerStackConfig
+    decoder_cfg: TransformerStackConfig
     num_layers: int
 
     @property
