@@ -16,13 +16,15 @@ from torch import nn
 from torchvision.ops import MLP
 from torch.nn.functional import scaled_dot_product_attention
 
-from .config import MHAConfig, MLPConfig, NormConfig
+from .config import MHAConfig, MLPConfig, ViTConfig, NormConfig
 
 
 class ViTransformer(nn.Module):
-    def __init__(self, num_layers: int, embed_dim: int, num_heads: int):
+    def __init__(self, cfg: ViTConfig):
         super().__init__()
+
         pass
+
 
     def forward(x: torch.Tensor):
         pass
@@ -36,10 +38,10 @@ class Encoder(nn.Module):
         mlp_cfg: MLPConfig,
         norm_cfg: NormConfig,
         base_dims: tuple[int, int, int],
-        p_dims: tuple[int, int], 
+        p_dims: tuple[int, int],
     ):
         """
-        Encoder block. If attention layers are given, 
+        Encoder block. If attention layers are given,
 
         Args:
             num_blocks (int): Number of attention blocks.
@@ -47,7 +49,7 @@ class Encoder(nn.Module):
             attn_cfg (MHAConfig): Self attention head config.
 
             mlp (MLPConfig): Feed-forward neural network config.
-           
+
             base_dims (tuple[int, int, int]): The base image dimensions (H, W, C) to interpolate into.
 
             p_dims (tuple[int, int]): Dimensions of each patch. i.e. 14x14 for a 196x196 image.
@@ -63,7 +65,9 @@ class Encoder(nn.Module):
         pH, pW = p_dims
         # ensure patch dimensions fit within the base dimensions given
         assert H // pH == W // pW, f"Patches don't fit exactly in base dimensions: {H} // {pH} =/= {W} // {pW}"
-        assert H % pH == 0 and W % pW == 0, f"Patch dimensions aren't divisible by base dimensions: one of ({H}, {pH}) and ({W}, {pW}) do not divide."
+        assert H % pH == 0 and W % pW == 0, (
+            f"Patch dimensions aren't divisible by base dimensions: one of ({H}, {pH}) and ({W}, {pW}) do not divide."
+        )
 
         N = H * W // (p_dims[0] * p_dims[1])
         self.flattened_dims = (N, p_dims[0] * p_dims[1] * C)
@@ -77,20 +81,24 @@ class Encoder(nn.Module):
 
         # Initial projector to embedding dimension
         self.embedder = nn.Linear(self.flattened_dims[1], self.embed_dim)
-        self.cls = nn.Parameter((N+1)*torch.rand(size=(self.embed_dim,), requires_grad=True))
-        self.positional = nn.Parameter((N+1)*torch.rand(size=(N+1, self.embed_dim), requires_grad=True))
-        
+
+        # Initialisation I just set arbitrarily to be a random float in [-N-1, N+1]
+        self.cls = nn.Parameter((N + 1) * torch.rand(size=(self.embed_dim,), requires_grad=True)) 
+        self.positional = nn.Parameter((N + 1) * torch.rand(size=(N + 1, self.embed_dim), requires_grad=True))
+
     def forward(self, x: torch.Tensor):
         """
         Forward pass is initially going to be implemented with absolute positional embeddings and linear interpolation. We assume at this stage that `x` has been resized to `base_dims` dimensions.
 
         TODO: We currently "perform 2D interpolation of the pre-trained position embeddings, according to their location in the original image" but we can replace this w/ something like RoPE.
 
-        Args: 
+        Args:
             x (torch.Tensor): The input image of size (B, H, W, C).
         """
         assert len(x.shape) == 4, f"Input tensor needs to be of dimension 4, instead its of dimension {len(x.shape)}."
-        assert x.shape[1:] == self.base_dims, f"Please resize x (which has dimensions {x.shape[1:]}) to {self.base_dims})"
+        assert x.shape[1:] == self.base_dims, (
+            f"Please resize x (which has dimensions {x.shape[1:]}) to {self.base_dims})"
+        )
 
         batch_size = x.shape[0]
         x = torch.reshape(x, (batch_size, *self.flattened_dims))

@@ -33,3 +33,23 @@ class MLPConfig(BaseConfig):
 class NormConfig(BaseConfig):
     """Config for LayerNorm."""
     normalized_shape: int | list | torch.Size
+
+
+class TransformerBlockConfig(BaseConfig):
+    attn: MHAConfig
+    mlp: MLPConfig
+    norm: NormConfig
+
+
+class ViTConfig(BaseConfig):
+    encoder_cfg: TransformerBlockConfig
+    decoder_cfg: TransformerBlockConfig
+    num_layers: int
+
+    @property
+    def encoder_emb_dim(self):
+        return self.encoder_cfg.attn.embed_dim
+
+    @property
+    def decoder_emb_dim(self):
+        return self.decoder_cfg.attn.embed_dim
